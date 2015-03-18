@@ -65,7 +65,7 @@ public class UserFacebook implements InterfaceUser{
     private static final List<String> allPublishPermissions = Arrays.asList(
             "publish_actions", "ads_management", "create_event", "rsvp_event",
             "manage_friendlists", "manage_notifications", "manage_pages");
-    private static String userIdStr = "";
+    private static GraphUser me = null;
     protected static void LogE(String msg, Exception e) {
         Log.e(LOG_TAG, msg, e);
         e.printStackTrace();
@@ -78,7 +78,11 @@ public class UserFacebook implements InterfaceUser{
     }
     
     public String getUserID(){
-		return userIdStr;
+        if (me == null) {
+            return "";
+        } else {
+            return me.getId();
+        }
 	}
     
     public UserFacebook(Context context) {
@@ -365,46 +369,54 @@ public class UserFacebook implements InterfaceUser{
     	}
     }
     
-    
     private class SessionStatusCallback implements Session.StatusCallback {
         @Override
-        public void call(Session session, SessionState state, Exception exception) {
-        	onSessionStateChange(session, state, exception);
+        public void call(final Session session, final SessionState state, final Exception exception) {
+            if (session != null && session.isOpened()) {
+                // make request to the /me API
+                Request.newMeRequest(session, new Request.GraphUserCallback() {
+                    @Override
+                    public void onCompleted(GraphUser user,
+                            Response response) {
+                        me = user;
+
+                        call2(session, state, exception);
+                    }
+                }).executeAsync();
+            } else {
+                call2(session, state, exception);
+            }
+        }
+
+        public void call2(Session session, SessionState state, Exception exception) {
             if(false == isLoggedIn){
                 if(SessionState.OPENED == state){
-                	isLoggedIn = true;
-                    UserWrapper.onActionResult(mAdapter, UserWrapper.ACTION_RET_LOGIN_SUCCEED, getSessionMessage(session));  
+                    if (me == null) {
+                        session.closeAndClearTokenInformation();
+                        UserWrapper.onActionResult(mAdapter, UserWrapper.ACTION_RET_LOGIN_FAILED, getErrorMessage(null, "cannot get myself"));  
+                    } else {
+                        isLoggedIn = true;
+                        UserWrapper.onActionResult(mAdapter, UserWrapper.ACTION_RET_LOGIN_SUCCEED, getSessionMessage(session));  
+                    }
                 }else if(SessionState.CLOSED_LOGIN_FAILED == state /*|| SessionState.CLOSED == state*/){                 
-                	UserWrapper.onActionResult(mAdapter, UserWrapper.ACTION_RET_LOGIN_FAILED, getErrorMessage(exception, "login failed"));
+                    UserWrapper.onActionResult(mAdapter, UserWrapper.ACTION_RET_LOGIN_FAILED, getErrorMessage(exception, "login failed"));
                 }
-                              
             }
             else{
                 if(SessionState.OPENED_TOKEN_UPDATED == state){
-                    UserWrapper.onActionResult(mAdapter, UserWrapper.ACTION_RET_LOGIN_SUCCEED, getSessionMessage(session));
+                    if (me == null) {
+                        session.closeAndClearTokenInformation();
+                        UserWrapper.onActionResult(mAdapter, UserWrapper.ACTION_RET_LOGIN_FAILED, getErrorMessage(null, "cannot get myself"));  
+                    } else {
+                        UserWrapper.onActionResult(mAdapter, UserWrapper.ACTION_RET_LOGIN_SUCCEED, getSessionMessage(session));
+                    }
                 }                   
                 else if(SessionState.CLOSED == state || SessionState.CLOSED_LOGIN_FAILED == state){
-                	isLoggedIn = false;
+                    isLoggedIn = false;
                     UserWrapper.onActionResult(mAdapter, UserWrapper.ACTION_RET_LOGIN_FAILED, getErrorMessage(exception, "failed"));
                 }                   
             }
-        }
-    }
-    
-	private void onSessionStateChange(Session session, SessionState state,
-            Exception exception) {
-        if (session != null && session.isOpened()) {
-            // make request to the /me API
-            Request.newMeRequest(session, new Request.GraphUserCallback() {
-                @Override
-                public void onCompleted(GraphUser user,
-                        Response response) {
-                    if (user != null) {
-                    	userIdStr = user.getId();
-                    }
 
-                }
-            }).executeAsync();
         }
     }
     
