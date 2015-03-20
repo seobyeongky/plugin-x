@@ -47,12 +47,21 @@ NSString *_accessToken = @"";
     [self _loginWithPermission:permission];
 }
 -(void)_loginWithPermission:(NSArray *) permission{
+         __block FBSessionStateHandler runOnceHandler = ^(FBSession *session,
+                                                          FBSessionState state,
+                                                          NSError *error) {
+             [self sessionStateChanged:session state:state error:error];
+             // Retrieve the app delegate
+         };
+
         [FBSession openActiveSessionWithReadPermissions:permission
                                            allowLoginUI:YES
                                       completionHandler:
          ^(FBSession *session, FBSessionState state, NSError *error) {
-             [self sessionStateChanged:session state:state error:error];
-             // Retrieve the app delegate
+             if (runOnceHandler) {
+                 runOnceHandler(session, state, error);
+                 runOnceHandler = nil;
+             }
          }];
 }
 - (void) logout{
